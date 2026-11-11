@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hanabi</title>
+<style>
+  :root {
+    --bg: #14171f; --panel: #1d2230; --panel2: #262c3d; --line: #353c52;
+    --text: #e8eaf1; --muted: #9aa2b8; --accent: #f2b84b;
+    --red: #e5534b; --yellow: #e8c33c; --green: #46b36a; --blue: #4a8fe8; --white: #e9ecf2;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 20px; margin: 0; letter-spacing: .04em; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 0 0 8px; }
+  button, select, input { font: inherit; color: var(--text); background: var(--panel2);
+    border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; }
+  button { cursor: pointer; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: var(--accent); color: #1b1505; border-color: var(--accent); font-weight: 600; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .hidden { display: none !important; }
+
+  /* setup */
+  .seat { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+  .seat .n { width: 20px; color: var(--muted); }
+  .seat input { width: 130px; }
+  .note { color: var(--muted); font-size: 13px; margin: 10px 0; }
+  .warn { color: var(--accent); }
+
+  /* table */
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; }
+  @media (max-width: 820px) { .layout { grid-template-columns: 1fr; } }
+  .stats { display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+  .stat b { font-size: 18px; }
+  .tokens { display: inline-flex; gap: 4px; vertical-align: middle; margin-left: 6px; }
+  .tok { width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid var(--blue); }
+  .tok.on { background: var(--blue); }
+  .tok.strike { border-color: var(--red); border-radius: 3px; }
+  .tok.strike.on { background: var(--red); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .card { width: 58px; height: 80px; border-radius: 9px; border: 2px solid transparent; position: relative;
+    display: flex; align-items: center; justify-content: center; font-size: 30px; font-weight: 700;
+    color: #14171f; user-select: none; }
+  .card.red { background: var(--red); } .card.yellow { background: var(--yellow); }
+  .card.green { background: var(--green); } .card.blue { background: var(--blue); }
+  .card.white { background: var(--white); }
+  .card.unknown { background: #3a425b; color: var(--text); border-style: dashed; border-color: #59627f; }
+  .card.empty { background: transparent; border: 2px dashed var(--line); color: var(--line); }
+  .card.click { cursor: pointer; }
+  .card.click:hover { transform: translateY(-3px); }
+  .card.sel { outline: 3px solid var(--accent); outline-offset: 2px; transform: translateY(-5px); }
+  .slotwrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .know { font-size: 11px; color: var(--muted); height: 30px; text-align: center; line-height: 1.25; max-width: 62px; }
+  .know .yes { color: var(--text); font-weight: 600; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; border: 1px solid #0006; }
+  .player { margin-bottom: 10px; }
+  .player.turn { border-color: var(--accent); }
+  .pname { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .pname .tag { font-size: 12px; color: var(--muted); }
+  .actions { min-height: 54px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+  .discards { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+  .discards span.c { display: inline-block; min-width: 56px; }
+  .log { max-height: 420px; overflow-y: auto; font-size: 13.5px; display: flex; flex-direction: column; gap: 6px; }
+  .log .why { color: var(--muted); font-style: italic; margin-left: 10px; }
+  .log .bad { color: var(--red); }
+  .side { display: flex; flex-direction: column; gap: 14px; }
+  .banner { padding: 12px 14px; border-radius: 10px; background: var(--panel2); border: 1px solid var(--accent); margin-bottom: 10px; }
+  .error { border-color: var(--red); }
+  .spin { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--muted); border-top-color: transparent;
+    border-radius: 50%; animation: s 1s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<main>
+  <div class="top">
+    <h1>HANABI</h1>
+    <button id="newBtn" class="hidden">New game</button>
+  </div>
+
+  <section id="setup" class="panel">
+    <h2>New game</h2>
+    <div class="seat">
+      <label>Players
+        <select id="count"><option>2</option><option selected>3</option><option>4</option><option>5</option></select>
+      </label>
+      <label>Seed <input id="seed" placeholder="random" style="width:90px"></label>
+    </div>
+    <div id="seats"></div>
+    <p id="keyNote" class="note"></p>
+    <button id="startBtn" class="primary">Deal</button>
+    <p id="setupError" class="note warn"></p>
+  </section>
+
+  <section id="table" class="hidden">
+    <div class="layout">
+      <div>
+        <div class="panel" style="margin-bottom:10px">
+          <div class="stats">
+            <span class="stat">Score <b id="score"></b><span style="color:var(--muted)"> / 25</span></span>
+            <span class="stat">Clues <span id="clues" class="tokens"></span></span>
+            <span class="stat">Strikes <span id="strikes" class="tokens"></span></span>
+            <span class="stat">Deck <b id="deck"></b></span>
+          </div>
+          <div style="height:12px"></div>
+          <h2>Fireworks</h2>
+          <div id="stacks" class="row"></div>
+        </div>
+        <div id="banner"></div>
+        <div id="actions" class="actions"></div>
+        <div id="players"></div>
+      </div>
+      <div class="side">
+        <div class="panel"><h2>Discard pile</h2><div id="discards" class="discards"></div></div>
+        <div class="panel"><h2>History</h2><div id="log" class="log"></div></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+const COLORS = ["red", "yellow", "green", "blue", "white"];
+const $ = id => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+let config = null, game = null, sel = null, busy = false;
+
+async function api(path, body) {
+  const res = await fetch(path, body === undefined ? {} : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "Request failed");
+  return data;
+}
+
+/* ---------- setup ---------- */
+const BOT_NAMES = ["Ada", "Basho", "Cleo", "Dara", "Enzo"];
+function renderSeats() {
+  const n = +$("count").value, box = $("seats"), old = [...box.children].map(readSeat);
+  box.innerHTML = "";
+  for (let i = 0; i < n; i++) {
+    const prev = old[i] || { kind: i === 0 ? "human" : "rule", name: i === 0 ? "You" : BOT_NAMES[i] };
+    const row = el("div", "seat");
+    row.append(el("span", "n", i + 1));
+    const kind = el("select");
+    for (const [v, t] of [["human", "Me"], ["rule", "Rule bot (no API key)"], ["claude", "Claude"]]) {
+      const o = el("option", null, t); o.value = v; kind.append(o);
+    }
+    kind.value = prev.kind;
+    const name = el("input"); name.value = prev.name; name.maxLength = 20;
+    const model = el("select");
+    for (const [id, label] of Object.entries(config.models)) { const o = el("option", null, label); o.value = id; model.append(o); }
+    model.value = prev.model || config.default_model;
+    const effort = el("select");
+    for (const e of config.efforts) { const o = el("option", null, "effort: " + e); o.value = e; effort.append(o); }
+    effort.value = prev.effort || "medium";
+    const sync = () => { const c = kind.value === "claude"; model.classList.toggle("hidden", !c); effort.classList.toggle("hidden", !c); updateKeyNote(); };
+    kind.onchange = () => {
+      if (kind.value === "human") for (const r of box.children) { const k = r.querySelector("select"); if (k !== kind && k.value === "human") { k.value = "rule"; k.onchangeSync(); } }
+      sync();
+    };
+    kind.onchangeSync = sync;
+    row.append(kind, name, model, effort);
+    box.append(row);
+    sync();
+  }
+}
+function readSeat(row) {
+  const [kind, model, effort] = row.querySelectorAll("select");
+  return { kind: kind.value, name: row.querySelector("input").value, model: model.value, effort: effort.value };
+}
+function updateKeyNote() {
+  const usesClaude = [...$("seats").children].some(r => readSeat(r).kind === "claude");
+  const note = $("keyNote");
+  if (usesClaude && !config.has_api_key) {
+    note.className = "note warn";
+    note.textContent = "No ANTHROPIC_API_KEY was found when the server started. Claude seats will fail until you set it and restart the server.";
+  } else if (usesClaude) {
+    note.className = "note";
+    note.textContent = "Each Claude turn is one paid API request. A full game is roughly 15 to 30 requests per Claude seat.";
+  } else { note.textContent = ""; }
+}
+$("count").onchange = renderSeats;
+$("startBtn").onclick = async () => {
+  $("setupError").textContent = "";
+  try {
+    const players = [...$("seats").children].map(readSeat);
+    show((await api("/api/new", { players, seed: $("seed").value.trim() })).game);
+  } catch (e) { $("setupError").textContent = e.message; }
+};
+$("newBtn").onclick = () => { game = null; $("table").classList.add("hidden"); $("setup").classList.remove("hidden"); $("newBtn").classList.add("hidden"); };
+
+/* ---------- table ---------- */
+function show(g) {
+  game = g; sel = null;
+  $("setup").classList.add("hidden"); $("table").classList.remove("hidden"); $("newBtn").classList.remove("hidden");
+  render();
+  if (!g.over && g.waiting_for !== "human" && !g.error) botTurn(false);
+}
+
+async function botTurn(fallback) {
+  if (busy) return;
+  busy = true; render();
+  const turnAtStart = game.turn;
+  if (game.waiting_for === "rule") await new Promise(r => setTimeout(r, 700));
+  try {
+    const data = await api("/api/bot", { fallback });
+    busy = false;
+    if (game && data.game && game.turn === turnAtStart) show(data.game);
+  } catch (e) { busy = false; game.error = e.message; render(); }
+}
+
+async function act(action) {
+  if (busy) return;
+  try { show((await api("/api/action", action)).game); }
+  catch (e) { game.error = e.message; render(); }
+}
+
+function cardEl(card, hidden) {
+  const c = el("div", "card");
+  if (hidden) {
+    c.classList.add(card.known_color || "unknown");
+    c.textContent = card.known_rank || "?";
+  } else { c.classList.add(card.color); c.textContent = card.rank; }
+  return c;
+}
+function knowEl(card, hidden) {
+  const k = el("div", "know");
+  const bits = [];
+  if (!hidden) {
+    if (card.known_color || card.known_rank) {
+      const s = el("span", "yes", "knows " + [card.known_color, card.known_rank].filter(Boolean).join(" "));
+      k.append(s);
+    }
+  }
+  const nots = [];
+  if (!card.known_color) for (const c of card.not_colors) nots.push(c);
+  if (!card.known_rank) for (const r of card.not_ranks) bits.push(r);
+  if (nots.length || bits.length) {
+    if (k.childNodes.length) k.append(el("br"));
+    k.append("not ");
+    for (const c of nots) { const d = el("span", "dot"); d.style.background = `var(--${c})`; d.title = c; k.append(d, " "); }
+    k.append(bits.join(" "));
+  }
+  return k;
+}
+
+function render() {
+  const g = game, me = g.viewer, myTurn = !g.over && g.waiting_for === "human" && !busy;
+  $("score").textContent = g.score;
+  $("deck").textContent = g.deck;
+  const toks = (id, n, max, cls) => { const b = $(id); b.innerHTML = ""; for (let i = 0; i < max; i++) b.append(el("span", "tok " + cls + (i < n ? " on" : ""))); b.title = n + " of " + max; };
+  toks("clues", g.clues, 8, ""); toks("strikes", g.strikes, 3, "strike");
+
+  const stacks = $("stacks"); stacks.innerHTML = "";
+  for (const c of COLORS) {
+    const top = g.stacks[c], d = el("div", "card " + (top ? c : "empty"), top || "");
+    if (!top) { d.style.borderColor = `var(--${c})`; }
+    d.title = c; stacks.append(d);
+  }
+
+  /* banner */
+  const banner = $("banner"); banner.innerHTML = "";
+  if (g.over) {
+    const b = el("div", "banner");
+    b.textContent = g.lost ? `Three strikes. The fireworks blew up with ${g.score} points on the table.`
+      : g.score === 25 ? "A perfect 25. Legendary." : `Game over. Final score: ${g.score} of 25.`;
+    banner.append(b);
+  } else if (g.error) {
+    const b = el("div", "banner error");
+    b.append(el("div", null, `${g.names[g.current]} could not move: ${g.error}`));
+    if (g.waiting_for !== "human") {
+      const r = el("div", "row"); r.style.marginTop = "8px";
+      const retry = el("button", null, "Retry"); retry.onclick = () => { delete g.error; botTurn(false); };
+      const fb = el("button", null, "Let the rule bot play this turn"); fb.onclick = () => { delete g.error; botTurn(true); };
+      r.append(retry, fb); b.append(r);
+    }
+    banner.append(b);
+  } else if (g.turns_left != null) {
+    banner.append(el("div", "banner", `The deck is empty. Turns left: ${g.turns_left}.`));
+  }
+
+  /* action bar */
+  const bar = $("actions"); bar.innerHTML = "";
+  if (g.over) { /* nothing */ }
+  else if (busy || (g.waiting_for !== "human" && !g.error)) {
+    const s = el("span"); s.append(el("span", "spin"), `${g.names[g.current]} is thinking…`); bar.append(s);
+  } else if (myTurn && !sel) {
+    bar.append(el("span", null, "Your turn. Click one of your cards to play or discard it, or a partner's card to give a clue."));
+  } else if (myTurn && sel.player === me) {
+    bar.append(el("span", null, `Your slot ${sel.index + 1}:`));
+    const play = el("button", "primary", "Play"); play.onclick = () => act({ type: "play", index: sel.index });
+    const disc = el("button", null, "Discard"); disc.onclick = () => act({ type: "discard", index: sel.index });
+    if (g.clues >= 8) { disc.disabled = true; disc.title = "Not allowed with all 8 clue tokens"; }
+    bar.append(play, disc);
+  } else if (myTurn) {
+    const hand = g.hands[sel.player], card = hand[sel.index], name = g.names[sel.player];
+    bar.append(el("span", null, `Tell ${name}:`));
+    for (const [key, val] of [["color", card.color], ["rank", card.rank]]) {
+      const n = hand.filter(c => c[key] === val).length;
+      const b = el("button", "primary", `${key === "color" ? val : "rank " + val} (${n} card${n > 1 ? "s" : ""})`);
+      b.onclick = () => act({ type: "clue", target: sel.player, [key]: val });
+      if (g.clues <= 0) { b.disabled = true; b.title = "No clue tokens left"; }
+      bar.append(b);
+    }
+  }
+  if (myTurn && sel) { const x = el("button", null, "Cancel"); x.onclick = () => { sel = null; render(); }; bar.append(x); }
+
+  /* hands: the viewer first, then the others in turn order */
+  const box = $("players"); box.innerHTML = "";
+  const order = g.names.map((_, i) => (i + (me ?? 0)) % g.names.length);
+  for (const p of order) {
+    const hidden = p === me, panel = el("div", "panel player" + (!g.over && p === g.current ? " turn" : ""));
+    const head = el("div", "pname");
+    const seat = g.seats[p];
+    const kind = seat.kind === "human" ? "you" : seat.kind === "rule" ? "rule bot" : `${config.models[seat.model]}, ${seat.effort}`;
+    head.append(el("b", null, g.names[p] + (!g.over && p === g.current ? "  ◂ to move" : "")), el("span", "tag", kind));
+    panel.append(head);
+    const row = el("div", "row");
+    g.hands[p].forEach((card, i) => {
+      const wrap = el("div", "slotwrap"), c = cardEl(card, hidden);
+      if (myTurn) { c.classList.add("click"); c.onclick = () => { sel = { player: p, index: i }; render(); }; }
+      if (sel && sel.player === p && sel.index === i) c.classList.add("sel");
+      wrap.append(c, knowEl(card, hidden));
+      row.append(wrap);
+    });
+    panel.append(row);
+    const hint = el("div", "tag", hidden ? "Your cards are hidden. Left is newest, right is oldest." : "");
+    hint.style.color = "var(--muted)"; hint.style.fontSize = "12px";
+    if (hidden) panel.append(hint);
+    box.append(panel);
+  }
+
+  /* discards */
+  const dis = $("discards"); dis.innerHTML = "";
+  if (!g.discard.length) dis.append(el("span", "tag", "Empty"));
+  for (const c of COLORS) {
+    const ranks = g.discard.filter(d => d.color === c).map(d => d.rank).sort();
+    if (!ranks.length) continue;
+    const line = el("div"), dot = el("span", "dot"); dot.style.background = `var(--${c})`;
+    const label = el("span", "c"); label.append(dot, " " + c);
+    line.append(label, ranks.join(" ")); dis.append(line);
+  }
+
+  /* history, newest first */
+  const log = $("log"); log.innerHTML = "";
+  if (!g.log.length) log.append(el("span", "tag", "No moves yet."));
+  for (const e of [...g.log].reverse()) {
+    const item = el("div", e.success === false ? "bad" : null, `${e.turn + 1}. ${e.text}`);
+    if (e.reasoning) item.append(el("div", "why", e.reasoning));
+    log.append(item);
+  }
+  if (!g.over && g.viewer != null && g.seats.some(s => s.kind !== "human"))
+    log.append(el("div", "tag", "Bot reasoning appears here once the game ends."));
+}
+
+(async () => {
+  config = await api("/api/config");
+  renderSeats();
+  const s = await api("/api/state");
+  if (s.game) show(s.game);
+})();
+</script>
+</body>
+</html>
